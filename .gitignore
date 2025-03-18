@@ -1,0 +1,8 @@
+venv/
+../lab1/.venv/
+data
+samples
+.idea/
+__pycache__/
+results
+points

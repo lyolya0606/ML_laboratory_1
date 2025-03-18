@@ -1,5 +1,4 @@
 import os
-import time
 
 import torch
 from torch import nn, optim
@@ -11,14 +10,13 @@ from torch.utils.tensorboard import SummaryWriter
 
 from AdamW import AdamWCustom
 from dataset import ImageDataset
-from utils import accuracy, make_directory, save_checkpoint, AverageMeter, ProgressMeter
+from utils import accuracy, make_directory, AverageMeter, ProgressMeter
 import config
 import model
 
 
 def main():
     start_epoch = 0
-    best_acc1 = 0.0
 
     train_dataloader, valid_dataloader = load_dataset()
     googlenet_model, ema_googlenet_model = build_model()
@@ -43,14 +41,6 @@ def main():
         print("\n")
 
         scheduler.step()
-
-        is_best = acc1 > best_acc1
-        is_last = (epoch + 1) == config.epochs
-        best_acc1 = max(acc1, best_acc1)
-        save_checkpoint({"epoch": epoch + 1, "best_acc1": best_acc1, "state_dict": googlenet_model.state_dict(),
-                         "ema_state_dict": ema_googlenet_model.state_dict(), "optimizer": optimizer.state_dict(),
-                         "scheduler": scheduler.state_dict()}, f"epoch_{epoch + 1}.pth.tar",
-                        samples_dir, results_dir, is_best, is_last)
 
 
 def load_dataset() -> [DataLoader, DataLoader]:
@@ -85,30 +75,22 @@ def define_loss() -> nn.CrossEntropyLoss:
     return criterion
 
 
-def define_optimizer(model) -> AdamWCustom:
-    optimizer = AdamWCustom(model.parameters(),
-                            lr=1e-4,
-                            betas=(0.9, 0.999),
-                            eps=1e-8,
-                            weight_decay=config.model_weight_decay)
-    return optimizer
-
-# def define_optimizer(model) -> optim.SGD:
-#     optimizer = optim.SGD(model.parameters(),
-#                           lr=config.model_lr,
-#                           momentum=config.model_momentum,
-#                           weight_decay=config.model_weight_decay)
-#
-#     return optimizer
-
-# def define_optimizer(model) -> optim.Adam:
-#     optimizer = optim.Adam(model.parameters(),
+# def define_optimizer(model) -> AdamWCustom:
+#     optimizer = AdamWCustom(model.parameters(),
 #                             lr=1e-4,
-#                             weight_decay=config.model_weight_decay,
 #                             betas=(0.9, 0.999),
-#                             eps=1e-8
-#                             )
+#                             eps=1e-8,
+#                             weight_decay=config.model_weight_decay)
 #     return optimizer
+
+def define_optimizer(model) -> optim.Adam:
+    optimizer = optim.Adam(model.parameters(),
+                            lr=1e-4,
+                            weight_decay=config.model_weight_decay,
+                            betas=(0.9, 0.999),
+                            eps=1e-8
+                            )
+    return optimizer
 
 
 def train(model, ema_model, train_dataloader, criterion, optimizer, epoch, scaler, writer):
@@ -116,53 +98,38 @@ def train(model, ema_model, train_dataloader, criterion, optimizer, epoch, scale
     batches = len(train_dataloader)
     progress = ProgressMeter(
         batches,
-        [AverageMeter("Time", ":6.3f"), AverageMeter("Data", ":6.3f"),
-         AverageMeter("Loss", ":6.6f"), AverageMeter("Acc@1", ":6.2f"),
-         AverageMeter("Acc@5", ":6.2f")],
+        [AverageMeter("Loss", ":6.6f"), AverageMeter("Acc@1", ":6.2f"), AverageMeter("Acc@5", ":6.2f")],
         prefix=f"Epoch: [{epoch + 1}]"
     )
 
-    end = time.time()
     for batch_index, batch_data in enumerate(train_dataloader):
-        # Замер времени загрузки данных
-        progress.meters[1].update(time.time() - end)
-
-        # Перенос данных на устройство
         images = batch_data["image"].to(config.device, memory_format=torch.channels_last, non_blocking=True)
         target = batch_data["target"].to(config.device, non_blocking=True)
 
-        # Обнуление градиентов
         model.zero_grad(set_to_none=True)
 
-        # Смешанная точность и вычисление потерь
         with torch.cuda.amp.autocast():
             output = model(images)
             loss = sum(w * criterion(o, target) for w, o in zip(
                 [config.loss_aux3_weights, config.loss_aux2_weights, config.loss_aux1_weights], output
             ))
 
-        # Обратное распространение и обновление весов
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
 
-        # Обновление EMA модели
         ema_model.update_parameters(model)
 
-        # Вычисление точности
         top1, top5 = accuracy(output[0], target, topk=(1, 5))
-        progress.meters[2].update(loss.item(), images.size(0))
-        progress.meters[3].update(top1[0].item(), images.size(0))
-        progress.meters[4].update(top5[0].item(), images.size(0))
+        progress.meters[0].update(loss.item(), images.size(0))
+        progress.meters[1].update(top1[0].item(), images.size(0))
+        progress.meters[2].update(top5[0].item(), images.size(0))
 
-        # Замер времени выполнения батча
-        progress.meters[0].update(time.time() - end)
-        end = time.time()
-
-        # Логирование
         if batch_index % config.train_print_frequency == 0:
             writer.add_scalar("Train/Loss", loss.item(), batch_index + epoch * batches)
             progress.display(batch_index + 1)
+
+    progress.display_summary('train')
 
 
 def validate(ema_model, valid_dataloader, epoch, writer, mode):
@@ -170,40 +137,33 @@ def validate(ema_model, valid_dataloader, epoch, writer, mode):
     batches = len(valid_dataloader)
     progress = ProgressMeter(
         batches,
-        [AverageMeter("Time", ":6.3f"), AverageMeter("Acc@1", ":6.2f"),
-         AverageMeter("Acc@5", ":6.2f")],
+        [AverageMeter("Loss", ":6.6f"), AverageMeter("Acc@1", ":6.2f"), AverageMeter("Acc@5", ":6.2f")],
         prefix=f"{mode}: "
     )
 
-    end = time.time()
+    criterion = nn.CrossEntropyLoss(label_smoothing=config.loss_label_smoothing).to(config.device)
+
     with torch.no_grad():
         for batch_index, batch_data in enumerate(valid_dataloader):
-            # Перенос данных на устройство
             images = batch_data["image"].to(config.device, memory_format=torch.channels_last, non_blocking=True)
             target = batch_data["target"].to(config.device, non_blocking=True)
 
-            # Инференс
             output = ema_model(images)
+            loss = criterion(output, target)
 
-            # Вычисление точности
             top1, top5 = accuracy(output, target, topk=(1, 5))
+            progress.meters[0].update(loss.item(), images.size(0))
             progress.meters[1].update(top1[0].item(), images.size(0))
             progress.meters[2].update(top5[0].item(), images.size(0))
 
-            # Замер времени выполнения батча
-            progress.meters[0].update(time.time() - end)
-            end = time.time()
-
-            # Логирование
             if batch_index % config.valid_print_frequency == 0:
                 progress.display(batch_index + 1)
 
-    # Итоговое отображение метрик
-    progress.display_summary()
-    if mode in ["Valid", "Test"]:
-        writer.add_scalar(f"{mode}/Acc@1", progress.meters[1].avg, epoch + 1)
-    else:
-        raise ValueError("Unsupported mode, please use `Valid` or `Test`.")
+    progress.display_summary('valid')
+
+    writer.add_scalar(f"{mode}/Loss", progress.meters[0].avg, epoch + 1)
+    writer.add_scalar(f"{mode}/Acc@1", progress.meters[1].avg, epoch + 1)
+    writer.add_scalar(f"{mode}/Acc@5", progress.meters[2].avg, epoch + 1)
 
     return progress.meters[1].avg
 

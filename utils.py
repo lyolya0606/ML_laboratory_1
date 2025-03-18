@@ -1,17 +1,10 @@
-
 import os
 import shutil
 from enum import Enum
-from typing import TypeVar
 
 import torch
 
-__all__ = [
-    "accuracy", "make_directory", "save_checkpoint",
-    "Summary", "AverageMeter", "ProgressMeter"
-]
-
-V = TypeVar("V")
+__all__ = ["accuracy", "make_directory", "Summary", "AverageMeter", "ProgressMeter"]
 
 
 def accuracy(output, target, topk=(1,)):
@@ -33,14 +26,6 @@ def accuracy(output, target, topk=(1,)):
 def make_directory(dir_path: str) -> None:
     if not os.path.exists(dir_path):
         os.makedirs(dir_path)
-
-
-def save_checkpoint(state_dict, file_name, samples_dir, results_dir, is_best=False, is_last=False):
-    checkpoint_path = os.path.join(samples_dir, file_name)
-    torch.save(state_dict, checkpoint_path)
-    for flag, name in [(is_best, "best.pth.tar"), (is_last, "last.pth.tar")]:
-        if flag:
-            shutil.copyfile(checkpoint_path, os.path.join(results_dir, name))
 
 
 class Summary(Enum):
@@ -96,10 +81,18 @@ class ProgressMeter(object):
         entries += [str(meter) for meter in self.meters]
         print("\t".join(entries))
 
-    def display_summary(self):
+    def display_summary(self, type_work='train'):
+        filepath = f"./points/Adam_{type_work}.csv"
         entries = [" *"]
         entries += [meter.summary() for meter in self.meters]
         print(" ".join(entries))
+
+        # entries = [f"{meter.avg:.2f}" for meter in self.meters]  # Collect averages only
+        # summary = ",".join(entries)  # CSV format: values separated by commas
+        #
+        # # Write summary to a CSV file
+        # with open(filepath, "a") as f:  # 'a' mode to append to the file
+        #     f.write(summary + "\n")
 
     def _get_batch_fmtstr(self, num_batches):
         num_digits = len(str(num_batches // 1))
