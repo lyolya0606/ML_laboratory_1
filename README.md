@@ -62,9 +62,11 @@
 - Проблема: при большом количестве карт много вычислений свертки.
 - Идея: с помощью свертки  предварительно уменьшить количество карт.
 
-<p align="center">
+<div align="center">
    <img src="https://github.com/user-attachments/assets/9f01c1ad-16f4-4596-bc3a-0b5b6c390947">
-</p>
+   <p>Рисунок 1 - Слои</p>
+</div>
+
 
 Сеть Inception состоит из множества Inception-блоков.
 
@@ -76,9 +78,10 @@
 - Функции потерь для дополнительных классификаторов домножаются на 0,3.
 - Используется дропаут.
 
-<p align="center">
+<div align="center">
    <img src="https://github.com/user-attachments/assets/8ffe8a22-8a42-4bd3-a08f-78e5d71c7843">
-</p>
+   <p>Рисунок 2 - Архитектура Inception</p> 
+</div>
 
 
 ## 2 AdamW Optimizer
@@ -122,10 +125,39 @@
 
 ---
 
+# Результаты работы и тестирования системы
+На рисунке 3 представлен результат обучения нейронной сети Inception с оптимизаторами Adam и AdamW. 
+
+<div align="center">
+   <img src="">
+   <p>Рисунок 3 - Результат обучения</p> 
+</div>
+
+Графики потерь и точности приведены на рисунках 4-6.
+
+<div align="center">
+   <img src="https://github.com/user-attachments/assets/9715d05b-6395-4a1d-a40e-40fc3a6b2845">
+   <p>Рисунок 4 - График точности</p>
+</div>
 
 
+<div align="center">
+   <img src="https://github.com/user-attachments/assets/4a1d9cd8-3bdf-4059-8184-730beca45a33">
+   <p>Рисунок 5 - График точности</p>
+</div>
 
 
+<div align="center">
+   <img src="https://github.com/user-attachments/assets/1379bfae-d0ee-42cd-99ec-22f13c592ba3">
+   <p>Рисунок 6 - График потерь</p>
+</div>
+
+---
+
+# Выводы по работе
+В результате выполнения лабораторной работы была реализована нейронная сеть Inception с оптимизатором AdamW. 
+- Точность модели с оптимизаторам Adam составила ?.
+- Точность модели с оптимизатором AdaSmooth составила ?.
 
 ---
 
